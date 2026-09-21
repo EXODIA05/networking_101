@@ -1,0 +1,196 @@
+================================================================================
+COMPREHENSIVE TECHNICAL REPORT:
+NETWORK ARCHITECTURE, TCP MECHANICS, AND LIVE PACKET ANALYSIS
+================================================================================
+
+--------------------------------------------------------------------------------
+1. ARCHITECTURAL MODELS: OSI VS. TCP/IP
+--------------------------------------------------------------------------------
+The OSI (Open Systems Interconnection) model was created as an abstract
+theoretical framework, defining strict rules first and expecting future
+protocols to adapt to them. In contrast, the TCP/IP (Transmission Control
+Protocol/Internet Protocol) model was developed pragmatically, designed around
+pre-existing operational protocols (TCP and IP) that already powered early
+packet-switched networks.
+
+LAYER COMPARISON MATRIX
+--------------------------------------------------------------------------------
+OSI Model (7 Layers)   | TCP/IP (4 Layers) | Core Functions & Protocol Examples
+-----------------------+-------------------+------------------------------------
+7. Application         | Application       | User interaction, data formatting,
+6. Presentation        |                   | encryption, and session control.
+5. Session             |                   | Examples: HTTP, HTTPS, FTP, DNS
+-----------------------+-------------------+------------------------------------
+4. Transport           | Transport         | End-to-end data delivery, flow
+                       |                   | control, error checking, porting.
+                       |                   | Examples: TCP, UDP
+-----------------------+-------------------+------------------------------------
+3. Network             | Internet          | Packet routing, logical IP
+                       |                   | addressing, and path selection.
+                       |                   | Examples: IPv4, IPv6, ICMP, IPsec
+-----------------------+-------------------+------------------------------------
+2. Data Link           | Network Access    | Hardware/MAC addressing, frame
+1. Physical            | (Link)            | creation, physical signal transmit.
+                       |                   | Examples: Ethernet, Wi-Fi, Switches
+--------------------------------------------------------------------------------
+
+Structural Differences:
+* Protocol Independence: OSI maintains a strict distinction between services,
+  interfaces, and protocols. TCP/IP layers are tightly integrated with the
+  actual working protocols that define them.
+* Network-Layer Paradigms: The OSI Network layer supports both connection-
+  oriented and connectionless communication. The TCP/IP Internet layer relies
+  exclusively on the connectionless Internet Protocol (IP), delegating
+  connection management higher up to TCP at the Transport layer.
+
+--------------------------------------------------------------------------------
+2. TCP FUNDAMENTALS, FLAGS, AND THE 3-WAY HANDSHAKE
+--------------------------------------------------------------------------------
+TCP Definition:
+Transmission Control Protocol (TCP) is a reliable, connection-oriented,
+Transport-layer protocol that guarantees in-order, error-checked delivery of a
+stream of octets (bytes) between applications running on hosts communicating via
+an IP network.
+
+TCP Flags (1-Bit Switches):
+* SYN (Synchronize): Initiates a connection setup and synchronizes sequence
+  numbers between hosts.
+* ACK (Acknowledge): Indicates that the Acknowledgement Number field contains
+  valid receipt confirmation.
+* FIN (Finish): Requests graceful termination of the connection in one direction.
+* RST (Reset): Immediately aborts an unstable or invalid connection.
+* PSH (Push): Forces immediate delivery of buffered data to the receiving app.
+* URG (Urgent): Marks contained data as high-priority for immediate processing.
+
+The 3-Way Handshake Mechanics:
+Before data exchange begins, client and server must establish sequence numbers
+and confirm two-way reachability.
+
+CLIENT                                           SERVER
+  |                                                |
+  |  1. SYN (Seq=100, Ack=0, Flags: SYN)          |
+  |----------------------------------------------->|
+  |                                                |
+  |  2. SYN-ACK (Seq=500, Ack=101, Flags: SYN,ACK) |
+  |<-----------------------------------------------|
+  |                                                |
+  |  3. ACK (Seq=101, Ack=501, Flags: ACK)         |
+  |----------------------------------------------->|
+  |                                                |
+
+Handshake Step Breakdown:
+1. Step 1: SYN (Client -> Server)
+   - Payload: SYN=1, ACK=0, Client Starting Sequence Number (Seq=100).
+   - Meaning: Client asks to open a connection and sets its starting tracking
+     number. ACK is 0 because no server data exists yet to acknowledge.
+2. Step 2: SYN-ACK (Server -> Client)
+   - Payload: SYN=1, ACK=1, Server Starting Sequence Number (Seq=500), Ack=101.
+   - Meaning: Server acknowledges client's request (Ack=101 means "I received
+     up to #100, send #101 next") and simultaneously proposes its own starting
+     sequence number (Seq=500).
+3. Step 3: ACK (Client -> Server)
+   - Payload: SYN=0, ACK=1, Seq=101, Ack=501.
+   - Meaning: Client acknowledges server's starting number (Ack=501). SYN drops
+     to 0 because both sides have declared their starting numbers; setting
+     SYN=1 again would incorrectly request a new connection.
+
+Connection Socket States:
+* ESTABLISHED: The 3-way handshake is complete. The connection is active,
+  healthy, and ready for bidirectional data transfer.
+* TIME_WAIT: The state entered by the side that initiated an active close. It
+  waits for a short period (typically 30-120 seconds) to ensure the remote host
+  received the final ACK and to prevent stale packets from interfering with
+  new sockets.
+* CLOSE_WAIT: The state of a host waiting for its local application to
+  acknowledge a close request received from a remote endpoint.
+
+--------------------------------------------------------------------------------
+3. SYSTEM INSPECTION WITH ss -tulpn
+--------------------------------------------------------------------------------
+The `ss` (socket statistics) tool inspects active system network sockets.
+
+Command Flag Breakdown:
+* -t : Display TCP sockets.
+* -u : Display UDP sockets.
+* -l : Filter and show only listening sockets waiting for incoming connections.
+* -p : Display the process ID (PID) and process name using the socket.
+* -n : Render numerical IP addresses and port numbers instead of resolving
+       service names.
+
+Binding Address Scope:
+* 0.0.0.0:PORT (Wildcard Binding): The service listens on all network
+  interfaces. Anyone on the local network (LAN) can reach the application using
+  the host's IP address.
+* 127.0.0.1:PORT (Loopback Binding): The service is isolated strictly to the
+  local host (localhost). External devices on the Wi-Fi/LAN cannot reach it.
+
+Queue Metrics (Recv-Q and Send-Q):
+For sockets in a LISTEN state, queue metrics monitor application connection
+handling:
+* Send-Q (Backlog Buffer Max): The maximum capacity of the socket's backlog
+  queue (how many unaccepted client connections can wait in line at once).
+* Recv-Q (Pending Client Queue): The actual number of client connections
+  currently waiting in line to be accepted by the application layer process.
+
+--------------------------------------------------------------------------------
+4. LIVE PACKET CAPTURE & ANALYSIS WITH WIRESHARK
+--------------------------------------------------------------------------------
+Wireshark is a packet analyzer used to capture, inspect, and analyze real-time
+network traffic moving across system interfaces.
+
+Interface Selection Dynamics:
+* wlo1 (Wireless Interface): The physical network card handling real outbound/
+  inbound Wi-Fi traffic.
+* lo / loopback: Internal virtual interface (127.0.0.1) used when system
+  applications talk to other local services on the same host.
+* any: A synthetic Linux pseudo-interface capturing traffic simultaneously
+  across every active network adapter.
+
+Security Architecture & Privilege Management:
+Why Running `sudo wireshark` is Dangerous:
+1. Malicious Packet Exploitation: Wireshark contains millions of lines of
+   complex dissector code. If an attacker broadcasts a malformed packet
+   designed to exploit a buffer overflow in Wireshark, running the main GUI
+   application as root grants the attacker instant, full control over the host.
+2. File Permission Corruption: Running GUI apps with `sudo` writes user
+   configuration files owned by `root` into the local user's home directory
+   (/home/$USER/.config/wireshark), causing authorization errors when launched
+   normally later.
+
+The Role of dumpcap and newgrp:
+Linux implements the Principle of Least Privilege:
+* The packet capture privilege is isolated to a tiny, dedicated binary (dumpcap).
+* Adding a non-root user to the wireshark group grants dumpcap raw capture
+  capability while keeping the main graphical interface running safely under
+  standard unprivileged user rights.
+
+Commands for safe setup:
+  sudo dpkg-reconfigure wireshark-common
+  sudo usermod -aG wireshark $USER
+  newgrp wireshark
+
+Detection of Promiscuous Capture Mode by Attackers:
+1. MAC Address Probing (Fake Envelope Test): The attacker sends an ARP or Ping
+   packet with the target host's IP address but a deliberately invalid MAC
+   address. A normal card drops the frame at hardware level. A card in
+   promiscuous mode passes it to the OS, which sees its IP and sends a reply.
+2. CPU Load Flooding: The attacker floods the segment with junk packets. In
+   promiscuous mode, the target CPU must process every frame for Wireshark,
+   spiking CPU usage and introducing latency.
+3. Traffic Traps (Baiting): Attackers broadcast fake service credentials. When
+   the analyst clicks the packet inside Wireshark to investigate, the target
+   machine sends an active connection request to the attacker.
+4. Local Process Fingerprinting: Local malware scans active system processes
+   or checks for raw socket bindings (e.g., libpcap hooks) to detect active
+   analyzers.
+
+Practical Protocol Verification Exercises:
+* ICMP vs. ICMPv6 Ping Filtering: Modern Linux systems often prioritize IPv6.
+  Running `ping google.com` defaults to IPv6, requiring the `icmpv6` filter in
+  Wireshark. Forcing IPv4 via `ping -4 -c 3 google.com` allows filtering by `icmp`.
+* Verifying the TCP Handshake via `curl http://example.com`:
+  Filter: tcp.port == 80
+  Packet 1: [SYN]      Client -> Server | Flags: Syn (1)          | Src Port: 51234 -> Dst Port: 80
+  Packet 2: [SYN-ACK] Server -> Client | Flags: Syn (1), Ack (1) | Src Port: 80    -> Dst Port: 51234
+  Packet 3: [ACK]      Client -> Server | Flags: Ack (1)          | Src Port: 51234 -> Dst Port: 80
+================================================================================
