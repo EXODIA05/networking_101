@@ -1,0 +1,177 @@
+===============================================================================
+TRANSPORT LAYER MASTERY: TCP, UDP & WIRESHARK PACKET ANALYSIS
+===============================================================================
+
+1. TRANSPORT LAYER FOUNDATIONS & PORT ARCHITECTURE
+-------------------------------------------------------------------------------
+The Transport Layer (Layer 4) of the OSI model manages host-to-host process
+communication. While Layer 3 (IP) routes traffic between physical/logical
+devices, Layer 4 delivers data directly to specific software applications
+running on those devices.
+
+       [ Client Device ]                                  [ Server Device ]
++------------------------------+                  +------------------------------+
+| Layer 3: IP Address          |                  | Layer 3: IP Address          |
+|          192.168.1.50        |                  |          93.184.216.34       |
+|                              |                  |                              |
+| Layer 4: Ephemeral Port      |  === Network ===>| Layer 4: Destination Port    |
+|          54321               |                  |          443 (HTTPS)         |
++------------------------------+                  +------------------------------+
+               \                                                 /
+                +-------------- SOCKET PAIR --------------------+
+                 192.168.1.50:54321  <--->  93.184.216.34:443
+
+SOCKETS & SOCKET PAIRS:
+A Socket is the combination of an IP address and a Port number (IP:Port).
+Every network connection is defined by a unique 4-tuple:
+
+  Socket Pair = (Source IP, Source Port, Destination IP, Destination Port)
+
+PORT ALLOCATION RANGES (16-bit integers, 0 to 65535):
+
+• Well-Known Ports (0 – 1023):
+  Reserved for system services and core protocols. Requires privileged 
+  (root/admin) access on most OSs.
+  Examples: 21 (FTP), 22 (SSH), 25 (SMTP), 53 (DNS), 80 (HTTP), 443 (HTTPS).
+
+• Registered Ports (1024 – 49151):
+  Assigned by IANA for specific vendor applications and non-root services.
+  Examples: 1433 (MS SQL), 3306 (MySQL), 3389 (RDP), 5432 (PostgreSQL), 8080 (HTTP-Alt).
+
+• Dynamic / Ephemeral Ports (49152 – 65535):
+  Temporary ports automatically assigned by the client OS for outbound 
+  connections. Closed upon session termination.
+
+
+2. TCP HEADER & CONTROL FLAGS
+-------------------------------------------------------------------------------
+Transmission Control Protocol (TCP) uses a standard header (20 to 60 bytes)
+containing 6 primary control flags (1-bit fields) that govern connection 
+state and packet processing.
+
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|          Source Port          |       Destination Port        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                        Sequence Number                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                     Acknowledgment Number                     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|  Data | Reserved  |U|A|P|R|S|F|            Window             |
+| Offset|           |R|C|S|S|Y|I|            Size               |
+|       |           |G|K|H|T|N|N|                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|           Checksum            |         Urgent Pointer        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                    Options (0 to 40 bytes)                    |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+CONTROL FLAGS BREAKDOWN:
+• SYN (Synchronize): Initiates connection and syncs sequence numbers (ISNs).
+• ACK (Acknowledge): Confirms receipt of transmitted data or handshake steps.
+• FIN (Finish): Initiates graceful connection shutdown.
+• RST (Reset): Abruptly terminates connection due to errors or security blocks.
+• PSH (Push): Forces receiving buffer to immediately hand data to application.
+• URG (Urgent): Signals high-priority out-of-band data processing.
+
+
+3. TCP CONNECTION ESTABLISHMENT (3-WAY HANDSHAKE)
+-------------------------------------------------------------------------------
+CLIENT (State: CLOSED)                                  SERVER (State: LISTEN)
+  |                                                                |
+  |  1. SYN (Seq=X, ACK=0, Flags: [SYN])                           |
+  |  ----------------------------------------------------------->  |
+  |  State: SYN-SENT                                               | State: SYN-RECEIVED
+  |                                                                |
+  |  2. SYN-ACK (Seq=Y, Ack=X+1, Flags: [SYN, ACK])                 |
+  |  <-----------------------------------------------------------  |
+  |  State: ESTABLISHED                                            |
+  |                                                                |
+  |  3. ACK (Seq=X+1, Ack=Y+1, Flags: [ACK])                        |
+  |  ----------------------------------------------------------->  |
+  |                                                                | State: ESTABLISHED
+  |                                                                |
+  | ================= DATA FLOW BEGINS (HTTP/TLS) ================ |
+
+MECHANICS:
+1. Step 1 (SYN): Client sends SYN=1, ACK=0, Seq=X (random ISN).
+2. Step 2 (SYN-ACK): Server replies SYN=1, ACK=1, Seq=Y (random ISN), Ack=X+1.
+3. Step 3 (ACK): Client replies SYN=0, ACK=1, Seq=X+1, Ack=Y+1. Both move to ESTABLISHED.
+
+
+4. UDP ARCHITECTURE & BEHAVIOR
+-------------------------------------------------------------------------------
+User Datagram Protocol (UDP) is a lightweight, connectionless, unreliable 
+Transport Layer protocol (RFC 768) with a fixed 8-byte header:
+
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|          Source Port          |       Destination Port        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|            Length             |           Checksum            |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                             Data                              |
+
+CORE TRAITS:
+• No Handshake: Transmits immediately without connection setup.
+• No Guarantees: No delivery tracking, ordering, or retransmissions.
+• Stateless: Neither endpoint stores state memory.
+• Low Latency: Zero setup delay, minimal overhead.
+
+
+5. DIRECT TECHNICAL COMPARISON: TCP vs. UDP
+-------------------------------------------------------------------------------
+Feature                | TCP                              | UDP
+-----------------------+----------------------------------+--------------------
+Connection Model       | Connection-oriented (Handshake)  | Connectionless
+Header Size            | 20 to 60 bytes (Variable)        | 8 bytes (Fixed)
+Reliability            | Guaranteed via ACK & Retrans     | Best-effort (Loss potential)
+Data Ordering          | Guaranteed in-order reassembly   | No ordering guarantees
+Flow/Congestion        | Supported (Sliding Window, etc.) | None built-in
+Speed / Performance    | Higher latency (State/overhead)  | Ultra-fast / Low latency
+Transmission Mode      | Byte stream (SOCK_STREAM)        | Datagrams (SOCK_DGRAM)
+Common Uses            | HTTP, HTTPS, SSH, FTP, SMTP, TLS  | DNS, DHCP, VoIP, QUIC
+
+
+6. PRACTICAL GUIDE: WIRESHARK IDENTIFICATION & ANALYSIS
+-------------------------------------------------------------------------------
+TASK 1: Isolating a TCP 3-Way Handshake
+Filter: ip.addr == 93.184.216.34 && tcp
+Look for:
+  Packet 1 (SYN):     [SYN] Seq=0 Win=64240 Len=0
+  Packet 2 (SYN-ACK): [SYN, ACK] Seq=0 Ack=1 Win=65535 Len=0
+  Packet 3 (ACK):     [ACK] Seq=1 Ack=1 Win=64240 Len=0
+
+TASK 2: Detecting Connection Resets (RST)
+Filter: tcp.flags.reset == 1
+Indicates closed ports or active firewall drop/reset policies.
+
+TASK 3: Identifying Retransmissions & Drops
+Filter: tcp.analysis.flags
+Look for: [TCP Retransmission], [TCP Fast Retransmission], [TCP Dup ACK x#]
+
+TASK 4: Inspecting UDP Traffic
+Filter: udp && dns
+Notice the total absence of sequence numbers, ACK numbers, or flag fields.
+
+
+7. ESSENTIAL WIRESHARK DISPLAY FILTERS CHEATSHEET
+-------------------------------------------------------------------------------
+# Show initial connection attempts (SYN only)
+tcp.flags.syn == 1 && tcp.flags.ack == 0
+
+# Show connection resets
+tcp.flags.reset == 1
+
+# Filter by specific port
+tcp.port == 443
+udp.port == 53
+
+# Find retransmissions and packet drops
+tcp.analysis.retransmission || tcp.analysis.duplicate_ack
+
+# Exclude noise
+!(arp || dhcp || mdns || icmp)
+===============================================================================
